@@ -1,11 +1,7 @@
 //SPDX-License-Identifier: GPL-3.0
  
 pragma solidity >=0.5.0 <0.9.0;
-// ----------------------------------------------------------------------------
-// EIP-20: ERC-20 Token Standard
-// https://eips.ethereum.org/EIPS/eip-20
-// -----------------------------------------
- 
+
 interface ERC20Interface {
     function totalSupply() external view returns (uint);
     function balanceOf(address tokenOwner) external view returns (uint balance);
@@ -20,18 +16,19 @@ interface ERC20Interface {
 }
  
  
+// ! The Cryptos Token Contract
 contract Cryptos is ERC20Interface{
     string public name = "Cryptos";
     string public symbol = "CRPT";
-    uint public decimals = 18; //18 is very common
+    uint public decimals = 0;
     uint public override totalSupply;
     
     address public founder;
     mapping(address => uint) public balances;
-    // balances[0x1111...] = 100;
+    // * balances[0x1111...] = 100;
     
     mapping(address => mapping(address => uint)) allowed;
-    // allowed[0x111][0x222] = 100;
+    // * allowed[0x111][0x222] = 100;
     
     
     constructor(){
@@ -46,7 +43,7 @@ contract Cryptos is ERC20Interface{
     }
     
     
-    function transfer(address to, uint tokens) public override returns(bool success){
+    function transfer(address to, uint tokens) public virtual override returns(bool success){
         require(balances[msg.sender] >= tokens);
         
         balances[to] += tokens;
@@ -57,7 +54,7 @@ contract Cryptos is ERC20Interface{
     }
     
     
-    function allowance(address tokenOwner, address spender) view public override returns(uint){
+    function allowance(address tokenOwner, address spender) public view override returns(uint){
         return allowed[tokenOwner][spender];
     }
     
@@ -73,7 +70,7 @@ contract Cryptos is ERC20Interface{
     }
     
     
-    function transferFrom(address from, address to, uint tokens) public override returns (bool success){
+    function transferFrom(address from, address to, uint tokens) public virtual override returns (bool success){
          require(allowed[from][to] >= tokens);
          require(balances[from] >= tokens);
          
@@ -81,86 +78,125 @@ contract Cryptos is ERC20Interface{
          balances[to] += tokens;
          allowed[from][to] -= tokens;
          
-         emit Transfer(from, to, tokens);
-         
          return true;
      }
 }
-contract CryptoICO is Cryptos{
+ 
+ 
+contract CryptosICO is Cryptos{
     address public admin;
-    address  payable public deposit;
-    uint256 tokenPrice = 0.001 ether;  // ! 1 ETH = 1000 CRPT, 1 CRPT = 0.001 ETH
-    uint256 public hardCap = 300 ether; 
-
-    uint public raisedAmount;
-    uint256 public saleStart = block.timestamp + 3600; // ! if you want to ICO start in one hour just add the number of second in a hour  ICO will start
-    uint256 public saleEnd = block.timestamp + 604800; // ! ICO ends  in one week
-    uint256 public tokenTradeStart = saleEnd + 604800; // ! transferable in a week after sale  *LOCK the tokens*
-    uint256 public maxInvest = 5 ether; // ! min buy
-    uint256 public minInvest = 0.1 ether; // ! max buy
-
-    enum State{beforeStart, running, afterEnd, halted}
-
+    address payable public deposit;
+    uint tokenPrice = 0.001 ether;  // ! 1 ETH = 1000 CRTP, 1 CRPT = 0.001
+    uint public hardCap = 300 ether;
+    uint public raisedAmount; // ! this value will be in wei
+    uint public saleStart = block.timestamp;
+    uint public saleEnd = block.timestamp + 604800; // ! one week
+    
+    uint public tokenTradeStart = saleEnd + 604800; // ! transferable in a week after saleEnd
+    uint public maxInvestment = 5 ether;
+    uint public minInvestment = 0.1 ether;
+    
+    // ! ICO STATE 
+    enum State { beforeStart, running, afterEnd, halted} 
     State public icoState;
-
+    
     constructor(address payable _deposit){
-        deposit = _deposit;
-        admin = msg.sender;
+        deposit = _deposit; 
+        admin = msg.sender; 
         icoState = State.beforeStart;
     }
-
-    function halt() public OnlyAdmin{
-        icoState = State.halted;
-    }
-
-    function resume() public OnlyAdmin{
-        icoState = State.running;
-    }
-
-    function changeDepositAddress(address payable newDeposit) public OnlyAdmin{
-        deposit = newDeposit;
-    }
-    function getCurrentState() public view returns(State){
-        if (icoState == State.halted){
-            return State.halted;
-        }
-
-        else if(block.timestamp < saleStart){
-            return State.beforeStart;
-        }
-
-        else if(block.timestamp >= saleStart && block.timestamp <= saleEnd){
-            return State.running;
-        }
-        else{
-            return State.afterEnd;
-        }
-    }
-
-    event Invest(address investor, uint256 value,uint256 tokens);
-
-    function invest() payable public returns(bool){
-        icoState = getCurrentState();
-        require(icoState == State.running);
-        
-        require(msg.value >= maxInvest && msg.value <= maxInvest);
-        raisedAmount += msg.value;
-
-        require(raisedAmount <= hardCap);
-
-        uint256 tokens = msg.value / tokenPrice;
-
-        balances[msg.sender] += tokens;
-        balances[founder] -= tokens;
-        deposit.transfer(msg.value);
-
-        emit Invest(msg.sender,msg.value,tokens);
-        return true;
-    }
-    
-    modifier OnlyAdmin(){
+ 
+    // ! ONLY ADMIN PERMISSION
+    modifier onlyAdmin(){
         require(msg.sender == admin);
         _;
     }
-
-} 
+    
+    
+    // ! STOP STATE
+    function halt() public onlyAdmin{
+        icoState = State.halted;
+    }
+    
+    // ! RUNNING
+    function resume() public onlyAdmin{
+        icoState = State.running;
+    }
+    
+    
+    function changeDepositAddress(address payable newDeposit) public onlyAdmin{
+        deposit = newDeposit;
+    }
+    
+    // ! GET THE CURRENT STATE (running,end....) 
+    function getCurrentState() public view returns(State){
+        if(icoState == State.halted){
+            return State.halted;
+        }else if(block.timestamp < saleStart){
+            return State.beforeStart;
+        }else if(block.timestamp >= saleStart && block.timestamp <= saleEnd){
+            return State.running;
+        }else{
+            return State.afterEnd;
+        }
+    }
+ 
+ 
+    event Invest(address investor, uint value, uint tokens);
+    
+    
+    //! function called when sending eth to the contract
+    function invest() payable public returns(bool){ 
+        icoState = getCurrentState();
+        require(icoState == State.running);
+        require(msg.value >= minInvestment && msg.value <= maxInvestment);
+        
+        raisedAmount += msg.value;
+        require(raisedAmount <= hardCap);
+        
+        uint tokens = msg.value / tokenPrice;
+ 
+        // ! adding tokens to the inverstor's balance from the founder's balance
+        balances[msg.sender] += tokens;
+        balances[founder] -= tokens; 
+        deposit.transfer(msg.value); // ! transfering the value sent to the ICO to the deposit address
+        
+        emit Invest(msg.sender, msg.value, tokens);
+        
+        return true;
+    }
+   
+   
+   // ! this function is called automatically when someone sends ETH to the contract's address
+   receive () payable external{
+        invest();
+    }
+  
+    
+    // ! BURNIN THE UNSOLD TOKENS
+    function burn() public returns(bool){
+        icoState = getCurrentState();
+        require(icoState == State.afterEnd);
+        balances[founder] = 0;
+        return true;
+        
+    }
+    
+    /* ! LOCKING UP THE TOKENS 
+    function transfer(address to, uint tokens) public override returns (bool success){
+        require(block.timestamp > tokenTradeStart); // the token will be transferable only after tokenTradeStart
+        
+        
+        super.transfer(to, tokens);  // same as Cryptos.transfer(to, tokens);
+        return true;
+    }
+    */
+    // ! LOCKING UP THE TOKENS 
+    function transferFrom(address from, address to, uint tokens) public override returns (bool success){
+        require(block.timestamp > tokenTradeStart); // ! the token will be transferable only after tokenTradeStart
+       
+        Cryptos.transferFrom(from, to, tokens);  // ! same as super.transferFrom(to, tokens);
+        return true;
+     
+    }
+}
